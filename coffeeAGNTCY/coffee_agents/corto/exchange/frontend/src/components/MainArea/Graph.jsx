@@ -47,12 +47,14 @@ const HIGHLIGHT = {
 
 // Node and Edge IDs
 const NODE_IDS = {
-    BUYER: '1',
-    SOMMELIER: '2',
+    SUPERVISOR: '1',
+    FLAVOR_AGENT: '2',
+    WEATHER_AGENT: '3',
 };
 
 const EDGE_IDS = {
-    BUYER_TO_SOMMELIER: '1-2',
+    SUPERVISOR_TO_FLAVOR: '1-2',
+    SUPERVISOR_TO_WEATHER: '1-3',
 };
 
 // Initial nodes
@@ -62,28 +64,40 @@ const commonNodeData = {
 
 const initialNodes = [
     {
-        id: NODE_IDS.BUYER,
+        id: NODE_IDS.SUPERVISOR,
         type: 'customNode',
         data: {
             ...commonNodeData,
             icon: <img src={supervisorIcon} alt="Supervisor Icon" style={{ marginLeft: '2.5px', width: '120%', height: '100%' }} />,
             label1: 'Supervisor Agent',
-            label2: 'Buyer',
+            label2: 'Exchange',
             handles: 'source',
         },
-        position: { x: 529.1332569384248, y: 159.4805787605829 },
+        position: { x: 400, y: 50 },
     },
     {
-        id: NODE_IDS.SOMMELIER,
+        id: NODE_IDS.FLAVOR_AGENT,
         type: 'customNode',
         data: {
             ...commonNodeData,
             icon: CoffeeBeanIcon,
-            label1: 'Q Grader Agent',
-            label2: 'Sommelier',
+            label1: 'Flavor Agent',
+            label2: 'Farm',
             handles: 'target',
         },
-        position: { x: 534.0903941835277, y: 582.9317472571444 },
+        position: { x: 200, y: 350 },
+    },
+    {
+        id: NODE_IDS.WEATHER_AGENT,
+        type: 'customNode',
+        data: {
+            ...commonNodeData,
+            icon: <FaCloudSun style={{ fontSize: '1.65em' }} />,
+            label1: 'Weather Agent',
+            label2: 'Weather',
+            handles: 'target',
+        },
+        position: { x: 600, y: 350 },
     },
 ];
 
@@ -95,15 +109,22 @@ const edgeTypes = {
 // Initial edges
 const initialEdges = [
     {
-        id: EDGE_IDS.BUYER_TO_SOMMELIER,
-        source: NODE_IDS.BUYER,
-        target: NODE_IDS.SOMMELIER,
+        id: EDGE_IDS.SUPERVISOR_TO_FLAVOR,
+        source: NODE_IDS.SUPERVISOR,
+        target: NODE_IDS.FLAVOR_AGENT,
+        data: { label: 'A2A : SLIM', labelIconType: EdgeLabelIcon.A2A },
+        type: 'custom',
+    },
+    {
+        id: EDGE_IDS.SUPERVISOR_TO_WEATHER,
+        source: NODE_IDS.SUPERVISOR,
+        target: NODE_IDS.WEATHER_AGENT,
         data: { label: 'A2A : SLIM', labelIconType: EdgeLabelIcon.A2A },
         type: 'custom',
     },
 ];
 
-const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied }) => {
+const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activeAgent = 'both' }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const animationLock = useRef(false); // Lock to prevent overlapping animations
@@ -147,15 +168,35 @@ const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied }) => 
 
         const animateGraph = async () => {
             if (!aiReplied) {
-                // Forward animation
-                await animate([NODE_IDS.BUYER], HIGHLIGHT.ON);
-                await animate([NODE_IDS.BUYER], HIGHLIGHT.OFF);
+                // Forward animation - Supervisor first
+                await animate([NODE_IDS.SUPERVISOR], HIGHLIGHT.ON);
+                await animate([NODE_IDS.SUPERVISOR], HIGHLIGHT.OFF);
 
-                await animate([EDGE_IDS.BUYER_TO_SOMMELIER], HIGHLIGHT.ON);
-                await animate([EDGE_IDS.BUYER_TO_SOMMELIER], HIGHLIGHT.OFF);
+                // Determine which edges and nodes to animate based on activeAgent
+                let edgesToAnimate = [];
+                let nodesToAnimate = [];
 
-                await animate([NODE_IDS.SOMMELIER], HIGHLIGHT.ON);
-                await animate([NODE_IDS.SOMMELIER], HIGHLIGHT.OFF);
+                if (activeAgent === 'weather') {
+                    // Only weather agent
+                    edgesToAnimate = [EDGE_IDS.SUPERVISOR_TO_WEATHER];
+                    nodesToAnimate = [NODE_IDS.WEATHER_AGENT];
+                } else if (activeAgent === 'flavor') {
+                    // Only flavor agent
+                    edgesToAnimate = [EDGE_IDS.SUPERVISOR_TO_FLAVOR];
+                    nodesToAnimate = [NODE_IDS.FLAVOR_AGENT];
+                } else {
+                    // Both agents (capability question or unknown)
+                    edgesToAnimate = [EDGE_IDS.SUPERVISOR_TO_FLAVOR, EDGE_IDS.SUPERVISOR_TO_WEATHER];
+                    nodesToAnimate = [NODE_IDS.FLAVOR_AGENT, NODE_IDS.WEATHER_AGENT];
+                }
+
+                // Animate only the relevant edges
+                await animate(edgesToAnimate, HIGHLIGHT.ON);
+                await animate(edgesToAnimate, HIGHLIGHT.OFF);
+
+                // Animate only the relevant target agents
+                await animate(nodesToAnimate, HIGHLIGHT.ON);
+                await animate(nodesToAnimate, HIGHLIGHT.OFF);
             } else {
                 // Backward animation
                 setAiReplied(false);
@@ -166,7 +207,7 @@ const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied }) => 
         };
 
         animateGraph();
-    }, [buttonClicked, setButtonClicked, aiReplied]);
+    }, [buttonClicked, setButtonClicked, aiReplied, activeAgent]);
 
     return (
         <div style={{ width: '100%', height: '100%' }}>
