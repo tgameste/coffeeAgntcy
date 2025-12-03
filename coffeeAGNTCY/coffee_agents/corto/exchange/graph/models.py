@@ -16,3 +16,17 @@ class FlavorProfileOutput(BaseModel):
     This class is used to structure the response from the A2A agent.
     """
     flavor_profile: str
+
+class WeatherInput(BaseModel):
+    """
+    Represents the input for the weather query.
+    This class is used to structure the input payload for the weather API.
+    """
+    location: str
+
+class WeatherOutput(BaseModel):
+    """
+    Represents the output of the weather query.
+    This class is used to structure the response from the weather API.
+    """
+    weather_info: str

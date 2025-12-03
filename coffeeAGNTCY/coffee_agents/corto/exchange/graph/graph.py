@@ -3,20 +3,17 @@
 
 import logging
 import uuid
-import os
 from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph_supervisor import create_supervisor
 
-from ioa_observe.sdk import Observe
-from ioa_observe.sdk.decorators import agent, tool, graph
-from ioa_observe.sdk.tracing import session_start
+from ioa_observe.sdk.decorators import agent, graph
 
 
 
 from common.llm import get_llm
-from graph.tools import FlavorProfileTool
+from graph.tools import FlavorProfileTool, WeatherTool
 
 from farm.card import AGENT_CARD as farm_agent_card
 
@@ -26,7 +23,12 @@ logger = logging.getLogger("corto.supervisor.graph")
 @agent(name="exchange_agent")
 class ExchangeGraph:
     def __init__(self):
-        self.graph = self.build_graph()
+        self.graph = None  # Build graph lazily to ensure fresh build
+    
+    def _ensure_graph(self):
+        """Ensure graph is built."""
+        if self.graph is None:
+            self.graph = self.build_graph()
 
     @graph(name="exchange_graph")
     def build_graph(self) -> CompiledStateGraph:
@@ -48,32 +50,55 @@ class ExchangeGraph:
             remote_agent_card=farm_agent_card,
         )
         
+        # initialize the weather tool for getting weather information
+        weather_tool = WeatherTool()
+        
         #  worker agent- always responsible for flavor, taste, or sensory profile of coffee queries
         get_flavor_profile_a2a_agent = create_react_agent(
             model=model,
             tools=[flavor_profile_tool],  # list of tools for the agent
             name="get_flavor_profile_via_a2a",
         )
+        
+        # worker agent for weather queries
+        get_weather_agent = create_react_agent(
+            model=model,
+            tools=[weather_tool],  # list of tools for the agent
+            name="get_weather_info",
+        )
+        
         graph = create_supervisor(
             model=model,
-            agents=[get_flavor_profile_a2a_agent],  # worker agents list
+            agents=[get_flavor_profile_a2a_agent, get_weather_agent],  # worker agents list
             prompt=(
-            "You are a routing-only supervisor agent. You are never allowed to answer user questions yourself.\n"
-            "Your behavior is strictly rule-based and must follow this logic:\n"
-            "1. If the user prompt includes anything about coffee flavor, taste, or sensory profile:\n"
-            "    - Route the task to worker agent 'get_flavor_profile_via_a2a'\n"
-            "    - Use the associated tool `flavor_profile_tool`\n"
-            "    - Do not answer or describe anything about coffee flavor\n"
-            "2. If the user prompt is not about flavor, taste, or sensory profile:\n"
-            "    - Respond with this exact message:\n"
-            "      \"I'm sorry, I cannot assist with that request. Please ask about coffee flavor or taste.\"\n"
-            "3. If the worker agent returns control and the result is successful with no errors:\n"
-            "    - Return an empty response and end the conversation\n"
-            "4. If the worker agent returns an error:\n"
-            "    - Return the same error message verbatim\n"
+            "You are a routing supervisor agent. You have access to tools that allow you to transfer queries to specialized worker agents.\n"
             "\n"
-            "You must never generate any original content, answers, or descriptions.\n"
-            "If you fail to match the user's input to rule 1, default to rule 2.\n"
+            "Available worker agents:\n"
+            "- get_weather_info: Handles all weather-related queries (use tool: transfer_to_get_weather_info)\n"
+            "- get_flavor_profile_via_a2a: Handles coffee flavor, taste, and sensory profile queries (use tool: transfer_to_get_flavor_profile_via_a2a)\n"
+            "\n"
+            "Your routing rules:\n"
+            "1. If the user asks about your capabilities:\n"
+            "   - Respond: \"I can help you learn about coffee flavor profiles, taste characteristics, and sensory profiles, as well as get weather information for coffee regions. "
+            "   You can ask me questions like: What are the flavor notes of Colombian coffee in winter? What's the weather like in Colombia? Get the current weather for Brazil.\"\n"
+            "\n"
+            "2. If the user prompt mentions weather, temperature, climate, current conditions, or asks 'get weather', 'what's the weather', 'weather in', 'weather for':\n"
+            "   - YOU MUST call the tool: transfer_to_get_weather_info\n"
+            "   - Pass the location/region from the user's query\n"
+            "   - Do NOT respond directly about weather\n"
+            "\n"
+            "3. If the user prompt mentions coffee flavor, taste, or sensory profile:\n"
+            "   - Call the tool: transfer_to_get_flavor_profile_via_a2a\n"
+            "   - Do NOT respond directly about flavor\n"
+            "\n"
+            "4. If the worker agent returns a result:\n"
+            "   - Return that result to the user\n"
+            "\n"
+            "5. If the query doesn't match rules 1-3:\n"
+            "   - Respond: \"I'm sorry, I cannot assist with that request. I specialize in coffee flavor profiles, taste characteristics, sensory profiles, and weather information for coffee regions. "
+            "   You can ask me about coffee flavors for different regions and seasons, weather conditions in coffee-growing areas, or ask 'what can you do' to learn more about my capabilities.\"\n"
+            "\n"
+            "CRITICAL: For weather queries, you MUST use the transfer_to_get_weather_info tool. Do not try to answer weather questions yourself.\n"
             ),
             add_handoff_back_messages=False,
             output_mode="last_message",
@@ -91,8 +116,7 @@ class ExchangeGraph:
         """
         try:
             # build graph if not already built
-            if not hasattr(self, 'graph'):
-                self.graph = self.build_graph()
+            self._ensure_graph()
             logger.debug(f"Received prompt: {prompt}")
             if not isinstance(prompt, str) or not prompt.strip():
                 raise ValueError("Prompt must be a non-empty string.")
