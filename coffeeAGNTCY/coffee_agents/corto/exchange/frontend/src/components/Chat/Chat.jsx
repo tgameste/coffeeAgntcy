@@ -42,8 +42,13 @@ const Chat = ({ messages, setMessages, setButtonClicked, setAiReplied, setActive
             {/*>*/}
             {/*    Conversation with Buyer Agent:*/}
             {/*</div>*/}
-            <div className={`clear_chat_button_container ${headerVisible ? '' : 'hidden'}`}>
-                <ClearChatButton setMessages={setMessages} />
+            <div className="clear_chat_button_container">
+                <ClearChatButton 
+                    setMessages={setMessages}
+                    setButtonClicked={setButtonClicked}
+                    setAiReplied={setAiReplied}
+                    setActiveAgent={setActiveAgent}
+                />
             </div>
             <div className="messages_container" onScroll={handleScroll}>
                 <Messages messages={messages} setMessages={setMessages} />
