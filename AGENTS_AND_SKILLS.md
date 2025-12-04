@@ -227,3 +227,4 @@ request = SendMessageRequest(
 4. **Tools Wrap A2A:** In supervisor patterns, tools encapsulate A2A communication to remote agents
 
 
+

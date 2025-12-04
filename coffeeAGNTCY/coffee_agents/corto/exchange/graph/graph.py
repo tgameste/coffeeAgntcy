@@ -144,8 +144,8 @@ class ExchangeGraph:
                 {
                     "configurable": {
                         "thread_id": str(uuid.uuid4()),
-                    },
-                    "recursion_limit": 100
+                        "recursion_limit": 100
+                    }
                 }
             )
 
