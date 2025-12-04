@@ -19,28 +19,15 @@ AGENT_SKILL = AgentSkill(
     ]
 )
 
-WEATHER_SKILL = AgentSkill(
-    id="get_weather",
-    name="Get Weather Information",
-    description="Retrieves current weather information for a given location or region, including temperature, wind speed, and wind direction.",
-    tags=["weather", "climate", "temperature", "coffee"],
-    examples=[
-        "What's the weather like in Brazil?",
-        "Get the current weather for Colombia",
-        "What are the weather conditions in Ethiopia?",
-        "Temperature in Vietnam"
-    ]
-)
-
 AGENT_CARD = AgentCard(
     name='Coffee Farm Flavor Agent',
     id='flavor-profile-farm-agent',
-    description='An AI agent that estimates the flavor profile of coffee beans using growing conditions like season and altitude, and provides weather information for coffee-growing regions.',
+    description='An AI agent that estimates the flavor profile of coffee beans using growing conditions like season and altitude.',
     url=f'http://{FARM_AGENT_HOST}:{FARM_AGENT_PORT}/',
     version='1.0.0',
     defaultInputModes=["text"],
     defaultOutputModes=["text"],
     capabilities=AgentCapabilities(streaming=True),
-    skills=[AGENT_SKILL, WEATHER_SKILL],
+    skills=[AGENT_SKILL],
     supportsAuthenticatedExtendedCard=False,
 )

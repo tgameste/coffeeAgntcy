@@ -22,6 +22,29 @@ services:
     ports:
       - "9999:9999"
 
+  weather-server:
+    build:
+      context: ../../..
+      dockerfile: coffeeAGNTCY/coffee_agents/corto/docker/Dockerfile.weather
+    image: ghcr.io/agntcy/coffee-agntcy/corto-weather:latest
+    container_name: weather-server
+    platform: linux/amd64
+    environment:
+      - WEATHER_AGENT_HOST=weather-server
+      - WEATHER_AGENT_PORT=9998
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_VERSION=${OPENAI_API_VERSION}
+      - OPENAI_ENDPOINT=${OPENAI_ENDPOINT}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - TRANSPORT_SERVER_ENDPOINT=http://slim:46357
+      - OTLP_HTTP_ENDPOINT=http://otel-collector:4318
+    ports:
+      - "9998:9998"
+
   slim:
     image: ghcr.io/agntcy/slim:0.3.15
     container_name: slim-dataplane
@@ -45,6 +68,8 @@ services:
     environment:
       - FARM_AGENT_HOST=farm-server
       - FARM_AGENT_PORT=9999
+      - WEATHER_AGENT_HOST=weather-server
+      - WEATHER_AGENT_PORT=9998
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
       - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
@@ -57,6 +82,7 @@ services:
       - OTLP_HTTP_ENDPOINT=http://otel-collector:4318
     depends_on:
       - farm-server
+      - weather-server
     ports:
       - "8000:8000"
 

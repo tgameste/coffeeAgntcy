@@ -10,7 +10,7 @@ import Messages, { LOCAL_STORAGE_KEY } from './Messages';
 import ClearChatButton from "./ClearChatButton.jsx";
 import { Role } from '../../utils/const.js';
 
-const Chat = ({ messages, setMessages, setButtonClicked, setAiReplied }) => {
+const Chat = ({ messages, setMessages, setButtonClicked, setAiReplied, setActiveAgent }) => {
     const [headerVisible, setHeaderVisible] = useState(true);
 
     const handleScroll = (e) => {
@@ -54,6 +54,7 @@ const Chat = ({ messages, setMessages, setButtonClicked, setAiReplied }) => {
                     setMessages={setMessages}
                     setButtonClicked={setButtonClicked}
                     setAiReplied={setAiReplied}
+                    setActiveAgent={setActiveAgent}
                 />
             </div>
         </div>

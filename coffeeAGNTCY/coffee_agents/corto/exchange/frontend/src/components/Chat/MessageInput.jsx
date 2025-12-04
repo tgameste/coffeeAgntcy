@@ -12,7 +12,27 @@ import './styles/Messages.css';
 
 const DEFAULT_EXCHANGE_APP_API_URL = 'http://0.0.0.0:8000';
 
-function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied }) {
+// Helper function to detect which agent should be used based on the query
+const detectAgentType = (query) => {
+    const lowerQuery = query.toLowerCase();
+    const weatherKeywords = ['weather', 'temperature', 'climate', 'current conditions', 'get weather', 'what\'s the weather', 'weather in', 'weather for', 'temperature in', 'climate in'];
+    const flavorKeywords = ['flavor', 'taste', 'sensory', 'profile', 'notes', 'aroma', 'acidity', 'body', 'finish'];
+    
+    // Check for weather keywords first
+    if (weatherKeywords.some(keyword => lowerQuery.includes(keyword))) {
+        return 'weather';
+    }
+    
+    // Check for flavor keywords
+    if (flavorKeywords.some(keyword => lowerQuery.includes(keyword))) {
+        return 'flavor';
+    }
+    
+    // Default to both (capability question or unknown)
+    return 'both';
+};
+
+function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, setActiveAgent }) {
     const [content, setContent] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -36,6 +56,12 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied })
 
         const updatedMessages = [...messages, userMessage, loadingMessage];
         setLoading(true);
+
+        // Detect which agent should be used
+        const agentType = detectAgentType(content);
+        if (setActiveAgent) {
+            setActiveAgent(agentType);
+        }
 
         setMessages(updatedMessages);
         setContent('');

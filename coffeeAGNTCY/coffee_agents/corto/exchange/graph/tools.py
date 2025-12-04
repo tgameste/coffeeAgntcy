@@ -5,7 +5,6 @@ import logging
 from typing import Any
 from uuid import uuid4
 from pydantic import PrivateAttr
-import httpx
 
 from a2a.types import (
     AgentCard, 
@@ -18,7 +17,7 @@ from a2a.types import (
 )
 
 from langchain_core.tools import BaseTool
-from graph.models import FlavorProfileInput, FlavorProfileOutput, WeatherInput, WeatherOutput
+from graph.models import FlavorProfileInput, FlavorProfileOutput, WeatherInput
 
 from agntcy_app_sdk.protocols.a2a.gateway import A2AProtocol
 from agntcy_app_sdk.factory import GatewayFactory
@@ -115,120 +114,91 @@ class FlavorProfileTool(BaseTool):
             if hasattr(part, "text"):
                 return part.text
         elif response.root.error:
-            raise Exception(f"A2A error: {response.error.message}")
+            raise Exception(f"A2A error: {response.root.error.message}")
 
         raise Exception("Unknown response type")
 
 
 class WeatherTool(BaseTool):
     """
-    This tool fetches current weather information for a given location/region.
+    This tool sends a location to the A2A weather agent and returns the weather information.
     """
     name: str = "get_weather"
     description: str = "Gets current weather information for a given location or region. Use this when users ask about weather conditions in a specific area."
-    args_schema = WeatherInput
 
-    # Base URLs for weather API
-    NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search"
-    OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
+    # private attribute to store client connection
+    _client = PrivateAttr()
     
-    HEADERS_NOMINATIM = {
-        "User-Agent": "CoffeeAgntcy/1.0"
-    }
+    def __init__(self, remote_agent_card: AgentCard, **kwargs: Any):
+        super().__init__(**kwargs)
+        self._remote_agent_card = remote_agent_card
+        self._client = None
+        self.args_schema = WeatherInput
 
-    async def _geocode_location(self, location: str) -> tuple[float, float] | None:
-        """Convert location name to (lat, lon) using Nominatim."""
-        params = {
-            "q": location,
-            "format": "json",
-            "limit": "1"
-        }
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.get(
-                    self.NOMINATIM_BASE,
-                    headers=self.HEADERS_NOMINATIM,
-                    params=params,
-                    timeout=30.0
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                if data and len(data) > 0:
-                    lat = float(data[0]["lat"])
-                    lon = float(data[0]["lon"])
-                    return lat, lon
-            except Exception as e:
-                logger.error(f"Error geocoding location {location}: {e}")
-        return None
+    async def _connect(self):
+        logger.info(f"Connecting to remote agent: {self._remote_agent_card.name}")
+       
+        a2a_topic = A2AProtocol.create_agent_topic(self._remote_agent_card)
+        self._client = await factory.create_client(
+            "A2A", 
+            agent_topic=a2a_topic,  
+            agent_url=self._remote_agent_card.url, 
+            transport=transport)
+        
+        logger.info("Connected to remote agent")
 
     def _run(self, input: dict) -> str:
         raise NotImplementedError("Use _arun for async execution.")
 
-    @tool(name="weather_tool")
-    async def _arun(self, location: str, **kwargs: Any) -> str:
-        """
-        Fetches current weather information for a given location.
-        Args:
-            location: The name of the location or region to get weather for (e.g., "Brazil", "Colombia", "Ethiopia").
-        Returns:
-            str: The weather information as a formatted string.
-        """
+    async def _arun(self, input: dict, **kwargs: Any) -> str:
+        logger.info("WeatherTool has been called.")
         try:
-            if not location or not location.strip():
+            if not input.get('location'):
                 logger.error("Invalid input: Location must be a non-empty string.")
                 raise ValueError("Invalid input: Location must be a non-empty string.")
-            
-            location = location.strip()
-            logger.info(f"WeatherTool has been called for location: {location}")
-            
-            # Geocode the location
-            coords = await self._geocode_location(location)
-            if not coords:
-                error_msg = f"Could not determine coordinates for location: {location}"
-                logger.warning(error_msg)
-                return error_msg
-            
-            lat, lon = coords
-            logger.info(f"Geocoded {location} to coordinates: ({lat}, {lon})")
-            
-            # Fetch weather data
-            params = {
-                "latitude": str(lat),
-                "longitude": str(lon),
-                "current_weather": "true"
-            }
-            
-            async with httpx.AsyncClient() as client:
-                try:
-                    resp = await client.get(
-                        self.OPEN_METEO_BASE,
-                        params=params,
-                        timeout=30.0
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    
-                    if not data or "current_weather" not in data:
-                        error_msg = f"No weather data available for {location}."
-                        logger.warning(error_msg)
-                        return error_msg
-                    
-                    cw = data["current_weather"]
-                    weather_info = (
-                        f"Current weather for {location}:\n"
-                        f"Temperature: {cw['temperature']}°C\n"
-                        f"Wind speed: {cw['windspeed']} m/s\n"
-                        f"Wind direction: {cw['winddirection']}°"
-                    )
-                    
-                    logger.info(f"Weather data retrieved successfully for {location}")
-                    return weather_info
-                    
-                except Exception as e:
-                    error_msg = f"Error fetching weather data for {location}: {str(e)}"
-                    logger.error(error_msg)
-                    return error_msg
-                    
+            resp = await self.send_message(input.get('location'))
+            return resp
         except Exception as e:
             logger.error(f"Failed to get weather information: {str(e)}")
             raise RuntimeError(f"Failed to get weather information: {str(e)}")
+    
+    @tool(name="weather_tool")
+    async def send_message(self, location: str) -> str:
+        """
+        Sends a message to the weather agent via A2A, specifically invoking its `get_weather` skill.
+        Args:
+            location (str): The location name to send to the agent.
+        Returns:
+            str: The weather information returned by the agent.
+        """
+
+        # Ensure the client is connected, use async event loop to connect if not
+        if not self._client:
+            await self._connect()
+
+        request = SendMessageRequest(
+            params=MessageSendParams(
+                skill_id="get_weather",
+                sender_id="coffee-exchange-agent",
+                receiver_id="weather-agent",
+                message=Message(
+                    messageId=str(uuid4()),
+                    role=Role.user,
+                    parts=[Part(TextPart(text=location))],
+                )
+            )
+        )
+
+        response = await self._client.send_message(request)
+        logger.info(f"Response received from A2A agent: {response}")
+
+        if response.root.result:
+            if not response.root.result.parts:
+                raise ValueError("No response parts found in the message.")
+            part = response.root.result.parts[0].root
+            if hasattr(part, "text"):
+                return part.text
+        elif response.root.error:
+            raise Exception(f"A2A error: {response.root.error.message}")
+
+        raise Exception("Unknown response type")

@@ -22,6 +22,7 @@ const App = () => {
     });
 
     const [buttonClicked, setButtonClicked] = useState(false);
+    const [activeAgent, setActiveAgent] = useState('both'); // 'weather', 'flavor', or 'both'
 
     useEffect(() => {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
@@ -36,6 +37,7 @@ const App = () => {
                     setMessages={setMessages}
                     setButtonClicked={setButtonClicked}
                     setAiReplied={setAiReplied}
+                    setActiveAgent={setActiveAgent}
                 />
             </div>
             <div className="main-area">
@@ -50,6 +52,7 @@ const App = () => {
                            setButtonClicked={setButtonClicked}
                            aiReplied={aiReplied}
                            setAiReplied={setAiReplied}
+                           activeAgent={activeAgent}
                     />
                 </div>
             </div>

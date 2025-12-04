@@ -16,6 +16,7 @@ from common.llm import get_llm
 from graph.tools import FlavorProfileTool, WeatherTool
 
 from farm.card import AGENT_CARD as farm_agent_card
+from weather.card import AGENT_CARD as weather_agent_card
 
 logger = logging.getLogger("corto.supervisor.graph")
 
@@ -50,8 +51,10 @@ class ExchangeGraph:
             remote_agent_card=farm_agent_card,
         )
         
-        # initialize the weather tool for getting weather information
-        weather_tool = WeatherTool()
+        # initialize the weather tool for getting weather information with the weather agent card
+        weather_tool = WeatherTool(
+            remote_agent_card=weather_agent_card,
+        )
         
         #  worker agent- always responsible for flavor, taste, or sensory profile of coffee queries
         get_flavor_profile_a2a_agent = create_react_agent(
@@ -71,34 +74,42 @@ class ExchangeGraph:
             model=model,
             agents=[get_flavor_profile_a2a_agent, get_weather_agent],  # worker agents list
             prompt=(
-            "You are a routing supervisor agent. You have access to tools that allow you to transfer queries to specialized worker agents.\n"
+            "You are a routing supervisor. Your job is SIMPLE: route queries to worker agents and return their results.\n"
             "\n"
-            "Available worker agents:\n"
-            "- get_weather_info: Handles all weather-related queries (use tool: transfer_to_get_weather_info)\n"
-            "- get_flavor_profile_via_a2a: Handles coffee flavor, taste, and sensory profile queries (use tool: transfer_to_get_flavor_profile_via_a2a)\n"
+            "Worker agents:\n"
+            "- get_weather_info: Weather queries (tool: transfer_to_get_weather_info)\n"
+            "- get_flavor_profile_via_a2a: Flavor queries (tool: transfer_to_get_flavor_profile_via_a2a)\n"
             "\n"
-            "Your routing rules:\n"
-            "1. If the user asks about your capabilities:\n"
-            "   - Respond: \"I can help you learn about coffee flavor profiles, taste characteristics, and sensory profiles, as well as get weather information for coffee regions. "
-            "   You can ask me questions like: What are the flavor notes of Colombian coffee in winter? What's the weather like in Colombia? Get the current weather for Brazil.\"\n"
+            "DECISION TREE:\n"
             "\n"
-            "2. If the user prompt mentions weather, temperature, climate, current conditions, or asks 'get weather', 'what's the weather', 'weather in', 'weather for':\n"
-            "   - YOU MUST call the tool: transfer_to_get_weather_info\n"
-            "   - Pass the location/region from the user's query\n"
-            "   - Do NOT respond directly about weather\n"
+            "1. Is this a weather query? (contains: weather, temperature, climate, current conditions)\n"
+            "   → YES: Call transfer_to_get_weather_info → When you see the result, return it EXACTLY → END\n"
+            "   → NO: Continue to step 2\n"
             "\n"
-            "3. If the user prompt mentions coffee flavor, taste, or sensory profile:\n"
-            "   - Call the tool: transfer_to_get_flavor_profile_via_a2a\n"
-            "   - Do NOT respond directly about flavor\n"
+            "2. Is this a flavor query? (contains: flavor, taste, sensory, profile, notes, aroma, acidity, body)\n"
+            "   → YES: Call transfer_to_get_flavor_profile_via_a2a → When you see the result, return it EXACTLY → END\n"
+            "   → NO: Continue to step 3\n"
             "\n"
-            "4. If the worker agent returns a result:\n"
-            "   - Return that result to the user\n"
+            "3. Is this a capability question? (what can you do, help, capabilities)\n"
+            "   → YES: Respond: \"I can help you learn about coffee flavor profiles, taste characteristics, and sensory profiles, as well as get weather information for coffee regions. You can ask me questions like: What are the flavor notes of Colombian coffee in winter? What's the weather like in Colombia? Get the current weather for Brazil.\" → END\n"
+            "   → NO: Continue to step 4\n"
             "\n"
-            "5. If the query doesn't match rules 1-3:\n"
-            "   - Respond: \"I'm sorry, I cannot assist with that request. I specialize in coffee flavor profiles, taste characteristics, sensory profiles, and weather information for coffee regions. "
-            "   You can ask me about coffee flavors for different regions and seasons, weather conditions in coffee-growing areas, or ask 'what can you do' to learn more about my capabilities.\"\n"
+            "4. Unknown query\n"
+            "   → Respond: \"I'm sorry, I cannot assist with that request. I specialize in coffee flavor profiles, taste characteristics, sensory profiles, and weather information for coffee regions. You can ask me about coffee flavors for different regions and seasons, weather conditions in coffee-growing areas, or ask 'what can you do' to learn more about my capabilities.\" → END\n"
             "\n"
-            "CRITICAL: For weather queries, you MUST use the transfer_to_get_weather_info tool. Do not try to answer weather questions yourself.\n"
+            "CRITICAL: When a worker agent returns a result:\n"
+            "- The result is the FINAL ANSWER\n"
+            "- Copy it EXACTLY - do not modify, summarize, or add anything\n"
+            "- Return it immediately\n"
+            "- DO NOT call any tools\n"
+            "- DO NOT route again\n"
+            "- The conversation is COMPLETE\n"
+            "\n"
+            "STOP CONDITIONS:\n"
+            "- After calling a tool and receiving a result → STOP\n"
+            "- After responding to capability question → STOP\n"
+            "- After responding to unknown query → STOP\n"
+            "- NEVER continue after any of these\n"
             ),
             add_handoff_back_messages=False,
             output_mode="last_message",
@@ -121,14 +132,22 @@ class ExchangeGraph:
             if not isinstance(prompt, str) or not prompt.strip():
                 raise ValueError("Prompt must be a non-empty string.")
             # session_start()
-            result = await self.graph.ainvoke({
-                "messages": [
+            result = await self.graph.ainvoke(
                 {
-                    "role": "user",
-                    "content": prompt
+                    "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                    ],
+                },
+                {
+                    "configurable": {
+                        "thread_id": str(uuid.uuid4()),
+                    },
+                    "recursion_limit": 100
                 }
-                ],
-            }, {"configurable": {"thread_id": uuid.uuid4()}})
+            )
 
             messages = result.get("messages", [])
             if not messages:
