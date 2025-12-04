@@ -14,7 +14,9 @@ const ClearChatButton = ({
     setMessages, 
     setButtonClicked, 
     setAiReplied, 
-    setActiveAgent 
+    setActiveAgent,
+    setThreadId,
+    setMessageCounts
 }) => {
     const [showConfirm, setShowConfirm] = useState(false);
 
@@ -31,9 +33,17 @@ const ClearChatButton = ({
         if (setButtonClicked) setButtonClicked(false);
         if (setAiReplied) setAiReplied(false);
         if (setActiveAgent) setActiveAgent('both');
+        if (setThreadId) setThreadId(null);
         
         // Clear localStorage
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([initialMessage]));
+        localStorage.removeItem('thread_id');
+        localStorage.removeItem('slim_message_counts');
+        
+        // Reset message counts
+        if (setMessageCounts) {
+            setMessageCounts({ flavor: 0, weather: 0 });
+        }
         
         // Hide confirmation dialog
         setShowConfirm(false);

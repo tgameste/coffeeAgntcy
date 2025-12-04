@@ -23,10 +23,31 @@ const App = () => {
 
     const [buttonClicked, setButtonClicked] = useState(false);
     const [activeAgent, setActiveAgent] = useState('both'); // 'weather', 'flavor', or 'both'
+    const [threadId, setThreadId] = useState(() => {
+        const saved = localStorage.getItem('thread_id');
+        return saved || null;
+    });
+    const [streaming, setStreaming] = useState(false);
+    
+    // Message counts for each SLIM edge
+    const [messageCounts, setMessageCounts] = useState(() => {
+        const saved = localStorage.getItem('slim_message_counts');
+        return saved ? JSON.parse(saved) : { flavor: 0, weather: 0 };
+    });
 
     useEffect(() => {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
     }, [messages]);
+
+    useEffect(() => {
+        if (threadId) {
+            localStorage.setItem('thread_id', threadId);
+        }
+    }, [threadId]);
+
+    useEffect(() => {
+        localStorage.setItem('slim_message_counts', JSON.stringify(messageCounts));
+    }, [messageCounts]);
 
     return (
         <div className="app-container">
@@ -38,6 +59,11 @@ const App = () => {
                     setButtonClicked={setButtonClicked}
                     setAiReplied={setAiReplied}
                     setActiveAgent={setActiveAgent}
+                    threadId={threadId}
+                    setThreadId={setThreadId}
+                    streaming={streaming}
+                    setStreaming={setStreaming}
+                    setMessageCounts={setMessageCounts}
                 />
             </div>
             <div className="main-area">
@@ -53,6 +79,8 @@ const App = () => {
                            aiReplied={aiReplied}
                            setAiReplied={setAiReplied}
                            activeAgent={activeAgent}
+                           messageCounts={messageCounts}
+                           setMessageCounts={setMessageCounts}
                     />
                 </div>
             </div>

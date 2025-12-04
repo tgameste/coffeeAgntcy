@@ -13,10 +13,34 @@ from ioa_observe.sdk import Observe
 from ioa_observe.sdk.instrumentations.a2a import A2AInstrumentor
 from ioa_observe.sdk.instrumentations.slim import SLIMInstrumentor
 from dotenv import load_dotenv
+import logging
+
 load_dotenv()
 Observe.init("corto_farm", api_endpoint=os.getenv("OTLP_HTTP_ENDPOINT"))
 
-SLIMInstrumentor().instrument()
+# Initialize SLIM instrumentation with error handling
+logger = logging.getLogger(__name__)
+try:
+    import importlib
+    import logging as std_logging
+    # Check if opentelemetry.instrumentation.requests is available
+    try:
+        importlib.import_module('opentelemetry.instrumentation.requests')
+        # Temporarily suppress ERROR level for root logger to avoid instrumentation errors
+        root_logger = std_logging.getLogger('root')
+        original_level = root_logger.level
+        root_logger.setLevel(std_logging.WARNING)
+        try:
+            instrumentor = SLIMInstrumentor()
+            instrumentor.instrument()
+        finally:
+            root_logger.setLevel(original_level)
+    except ImportError:
+        # Missing optional dependency - skip instrumentation
+        pass  # Silently skip if module not available
+except Exception:
+    # Non-critical: instrumentation is optional for observability
+    pass  # Silently skip on any error
 
 from agent_executor import FarmAgentExecutor
 from card import AGENT_CARD

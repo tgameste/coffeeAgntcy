@@ -3,7 +3,7 @@
 * SPDX-License-Identifier: Apache-2.0
 **/
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import {
     ReactFlow,
     ReactFlowProvider,
@@ -12,7 +12,7 @@ import {
     Controls,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { FaUserTie, FaWarehouse, FaCloudSun } from 'react-icons/fa';
+import { FaCloudSun } from 'react-icons/fa';
 import SlimNode from './SlimNode';
 import CustomEdge from './CustomEdge';
 import CustomNode from './CustomNode';
@@ -112,22 +112,57 @@ const initialEdges = [
         id: EDGE_IDS.SUPERVISOR_TO_FLAVOR,
         source: NODE_IDS.SUPERVISOR,
         target: NODE_IDS.FLAVOR_AGENT,
-        data: { label: 'A2A : SLIM', labelIconType: EdgeLabelIcon.A2A },
+        data: { 
+            label: 'A2A : SLIM', 
+            labelIconType: EdgeLabelIcon.A2A,
+            topic: 'default/default/Coffee_Farm_Flavor_Agent_1.0.0'
+        },
         type: 'custom',
     },
     {
         id: EDGE_IDS.SUPERVISOR_TO_WEATHER,
         source: NODE_IDS.SUPERVISOR,
         target: NODE_IDS.WEATHER_AGENT,
-        data: { label: 'A2A : SLIM', labelIconType: EdgeLabelIcon.A2A },
+        data: { 
+            label: 'A2A : SLIM', 
+            labelIconType: EdgeLabelIcon.A2A,
+            topic: 'default/default/Coffee_Weather_Agent_1.0.0'
+        },
         type: 'custom',
     },
 ];
 
-const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activeAgent = 'both' }) => {
+const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activeAgent = 'both', messageCounts = { flavor: 0, weather: 0 }, setMessageCounts }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
     const animationLock = useRef(false); // Lock to prevent overlapping animations
+    
+    // Update edge data with message counts
+    useEffect(() => {
+        setEdges((currentEdges) =>
+            currentEdges.map((edge) => {
+                if (edge.id === EDGE_IDS.SUPERVISOR_TO_FLAVOR) {
+                    return {
+                        ...edge,
+                        data: {
+                            ...edge.data,
+                            messageCount: messageCounts.flavor || 0,
+                        },
+                    };
+                }
+                if (edge.id === EDGE_IDS.SUPERVISOR_TO_WEATHER) {
+                    return {
+                        ...edge,
+                        data: {
+                            ...edge.data,
+                            messageCount: messageCounts.weather || 0,
+                        },
+                    };
+                }
+                return edge;
+            })
+        );
+    }, [messageCounts, setEdges]);
 
     useEffect(() => {
         if (nodes) {
@@ -137,9 +172,9 @@ const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activ
         }
     }, [nodes]);
 
-    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const delay = useCallback((ms) => new Promise((resolve) => setTimeout(resolve, ms)), []);
 
-    const updateStyle = (id, active) => {
+    const updateStyle = useCallback((id, active) => {
         setNodes((objs) =>
             objs.map((obj) =>
                 obj.id === id
@@ -154,7 +189,7 @@ const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activ
                     : obj
             )
         );
-    };
+    }, [setNodes, setEdges]);
 
     useEffect(() => {
         if (!buttonClicked && !aiReplied) return;
@@ -168,6 +203,23 @@ const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activ
 
         const animateGraph = async () => {
             if (!aiReplied) {
+                // Increment message counts based on activeAgent
+                if (setMessageCounts) {
+                    setMessageCounts((prev) => {
+                        const newCounts = { ...prev };
+                        if (activeAgent === 'weather') {
+                            newCounts.weather = (newCounts.weather || 0) + 1;
+                        } else if (activeAgent === 'flavor') {
+                            newCounts.flavor = (newCounts.flavor || 0) + 1;
+                        } else if (activeAgent === 'both') {
+                            // For 'both', increment both counts
+                            newCounts.flavor = (newCounts.flavor || 0) + 1;
+                            newCounts.weather = (newCounts.weather || 0) + 1;
+                        }
+                        return newCounts;
+                    });
+                }
+                
                 // Forward animation - Supervisor first
                 await animate([NODE_IDS.SUPERVISOR], HIGHLIGHT.ON);
                 await animate([NODE_IDS.SUPERVISOR], HIGHLIGHT.OFF);
@@ -207,7 +259,7 @@ const Graph = ({ buttonClicked, setButtonClicked, aiReplied, setAiReplied, activ
         };
 
         animateGraph();
-    }, [buttonClicked, setButtonClicked, aiReplied, activeAgent]);
+    }, [buttonClicked, setButtonClicked, aiReplied, setAiReplied, activeAgent, setMessageCounts, delay, updateStyle]);
 
     return (
         <div style={{ width: '100%', height: '100%' }}>

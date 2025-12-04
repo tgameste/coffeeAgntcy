@@ -18,3 +18,9 @@ def setup_logging():
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    
+    # Enable debug logging for SLIM gateway operations (if LOGGING_LEVEL is DEBUG)
+    if LOGGING_LEVEL == "DEBUG":
+        logging.getLogger("agntcy_app_sdk.transports.slim").setLevel(logging.DEBUG)
+        logging.getLogger("agntcy_app_sdk.transports.slim.gateway").setLevel(logging.DEBUG)
+        logging.getLogger("agntcy_app_sdk.factory").setLevel(logging.DEBUG)

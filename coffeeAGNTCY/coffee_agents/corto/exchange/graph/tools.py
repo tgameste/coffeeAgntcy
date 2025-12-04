@@ -51,16 +51,23 @@ class FlavorProfileTool(BaseTool):
         self._client = None
 
     async def _connect(self):
-        logger.info(f"Connecting to remote agent: {self._remote_agent_card.name}")
+        logger.info(f"[FlavorProfileTool._connect] Starting connection to remote agent: {self._remote_agent_card.name}")
+        logger.info(f"[FlavorProfileTool._connect] Agent URL: {self._remote_agent_card.url}")
+        logger.info(f"[FlavorProfileTool._connect] Transport endpoint: {TRANSPORT_SERVER_ENDPOINT}")
        
-        a2a_topic = A2AProtocol.create_agent_topic(self._remote_agent_card)
-        self._client = await factory.create_client(
-            "A2A", 
-            agent_topic=a2a_topic,  
-            agent_url=self._remote_agent_card.url, 
-            transport=transport)
-        
-        logger.info("Connected to remote agent")
+        try:
+            a2a_topic = A2AProtocol.create_agent_topic(self._remote_agent_card)
+            logger.info(f"[FlavorProfileTool._connect] Created A2A topic: {a2a_topic}")
+            logger.info(f"[FlavorProfileTool._connect] Creating A2A client...")
+            self._client = await factory.create_client(
+                "A2A", 
+                agent_topic=a2a_topic,  
+                agent_url=self._remote_agent_card.url, 
+                transport=transport)
+            logger.info(f"[FlavorProfileTool._connect] Successfully connected to remote agent")
+        except Exception as e:
+            logger.error(f"[FlavorProfileTool._connect] Error connecting to remote agent: {str(e)}")
+            raise
 
     def _run(self, input: FlavorProfileInput) -> float:
         raise NotImplementedError("Use _arun for async execution.")
@@ -136,30 +143,46 @@ class WeatherTool(BaseTool):
         self.args_schema = WeatherInput
 
     async def _connect(self):
-        logger.info(f"Connecting to remote agent: {self._remote_agent_card.name}")
+        logger.info(f"[WeatherTool] Connecting to remote agent: {self._remote_agent_card.name}")
+        logger.info(f"[WeatherTool] Agent URL: {self._remote_agent_card.url}")
+        logger.info(f"[WeatherTool] Transport: {DEFAULT_MESSAGE_TRANSPORT}, Transport endpoint: {TRANSPORT_SERVER_ENDPOINT}")
        
         a2a_topic = A2AProtocol.create_agent_topic(self._remote_agent_card)
+        logger.info(f"[WeatherTool] Creating A2A client with topic: {a2a_topic}")
         self._client = await factory.create_client(
             "A2A", 
             agent_topic=a2a_topic,  
             agent_url=self._remote_agent_card.url, 
             transport=transport)
         
-        logger.info("Connected to remote agent")
+        logger.info("[WeatherTool] Connected to remote agent successfully")
 
     def _run(self, input: dict) -> str:
         raise NotImplementedError("Use _arun for async execution.")
 
     async def _arun(self, input: dict, **kwargs: Any) -> str:
-        logger.info("WeatherTool has been called.")
+        logger.info(f"WeatherTool._arun called with input: {input}, type: {type(input)}")
         try:
-            if not input.get('location'):
+            # Handle both dict and Pydantic model inputs
+            if isinstance(input, dict):
+                location = input.get('location')
+            elif hasattr(input, 'location'):
+                location = input.location
+            else:
+                # If input is a string, use it as location
+                location = str(input) if input else None
+            
+            logger.info(f"WeatherTool._arun extracted location: {location}")
+            
+            if not location:
                 logger.error("Invalid input: Location must be a non-empty string.")
                 raise ValueError("Invalid input: Location must be a non-empty string.")
-            resp = await self.send_message(input.get('location'))
+            
+            resp = await self.send_message(location)
+            logger.info(f"WeatherTool._arun returning response: {resp[:100]}...")
             return resp
         except Exception as e:
-            logger.error(f"Failed to get weather information: {str(e)}")
+            logger.error(f"Failed to get weather information: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to get weather information: {str(e)}")
     
     @tool(name="weather_tool")
@@ -171,11 +194,16 @@ class WeatherTool(BaseTool):
         Returns:
             str: The weather information returned by the agent.
         """
+        logger.info(f"WeatherTool.send_message called with location: {location}")
 
         # Ensure the client is connected, use async event loop to connect if not
         if not self._client:
+            logger.info("Client not connected, calling _connect()")
             await self._connect()
+        else:
+            logger.info("Client already connected")
 
+        logger.info(f"Creating SendMessageRequest for location: {location}")
         request = SendMessageRequest(
             params=MessageSendParams(
                 skill_id="get_weather",
@@ -189,6 +217,7 @@ class WeatherTool(BaseTool):
             )
         )
 
+        logger.info("Sending message to weather agent via A2A client...")
         response = await self._client.send_message(request)
         logger.info(f"Response received from A2A agent: {response}")
 

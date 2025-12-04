@@ -47,3 +47,81 @@
     right: 40%;
     transform: translateX(50%);
 }
+
+/* Tooltip styles for SLIM topic display */
+.edge-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.edge-tooltip-content {
+    background-color: #2c3e50;
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: 'CiscoSansTT', monospace;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    word-break: break-all;
+    white-space: normal;
+}
+
+.edge-tooltip-content::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #2c3e50;
+}
+
+.edge-tooltip-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #ecf0f1;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.edge-tooltip-text {
+    color: #bdc3c7;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.edge-tooltip-divider {
+    height: 1px;
+    background-color: #34495e;
+    margin: 8px 0;
+}
+
+/* Message count badge */
+.message-count-badge {
+    display: inline-block;
+    background-color: #187ADC;
+    color: #ffffff;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 6px;
+    min-width: 18px;
+    text-align: center;
+    line-height: 1.2;
+    vertical-align: middle;
+}
+
+.custom-edge-label-text {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

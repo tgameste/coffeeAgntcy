@@ -10,7 +10,7 @@ import axios from 'axios';
 import { Role } from '../../utils/const.js';
 import './styles/Messages.css';
 
-const DEFAULT_EXCHANGE_APP_API_URL = 'http://0.0.0.0:8000';
+const DEFAULT_EXCHANGE_APP_API_URL = 'http://localhost:8000';
 
 // Helper function to detect which agent should be used based on the query
 const detectAgentType = (query) => {
@@ -32,7 +32,7 @@ const detectAgentType = (query) => {
     return 'both';
 };
 
-function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, setActiveAgent }) {
+function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, setActiveAgent, threadId, setThreadId, streaming }) {
     const [content, setContent] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -69,24 +69,123 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
 
         try {
             const apiUrl = import.meta.env.VITE_EXCHANGE_APP_API_URL || DEFAULT_EXCHANGE_APP_API_URL;
-            const resp = await axios.post(`${apiUrl}/agent/prompt`, {
-                prompt: content,
-            });
+            console.log('[MessageInput] API URL:', apiUrl);
+            console.log('[MessageInput] Sending request to:', `${apiUrl}/agent/prompt`);
+            console.log('[MessageInput] Request payload:', { prompt: content, thread_id: threadId, stream: streaming });
+            
+            if (streaming) {
+                // Streaming mode
+                const response = await fetch(`${apiUrl}/agent/prompt`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt: content,
+                        thread_id: threadId,
+                        stream: true,
+                    }),
+                });
 
-            const aiReply = {
-                role: 'assistant',
-                content: resp.data?.response || "No content received.",
-                id: uuid(),
-                animate: true,
-            };
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let accumulatedContent = '';
+                let currentThreadId = threadId;
 
-            setMessages([...messages, userMessage, aiReply]);
+                // Remove loading message and add streaming message
+                const streamingMessage = {
+                    role: 'assistant',
+                    content: '',
+                    id: uuid(),
+                    animate: false,
+                    loading: false,
+                };
+                setMessages([...messages, userMessage, streamingMessage]);
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.done) {
+                                    if (data.thread_id && setThreadId) {
+                                        setThreadId(data.thread_id);
+                                    }
+                                    break;
+                                }
+                                if (data.error) {
+                                    throw new Error(data.error);
+                                }
+                                if (data.content) {
+                                    accumulatedContent += data.content;
+                                    if (data.thread_id) {
+                                        currentThreadId = data.thread_id;
+                                    }
+                                    // Update streaming message
+                                    const updatedStreamingMessage = {
+                                        ...streamingMessage,
+                                        content: accumulatedContent,
+                                    };
+                                    setMessages([...messages, userMessage, updatedStreamingMessage]);
+                                }
+                            } catch (e) {
+                                console.error("Error parsing stream data:", e);
+                            }
+                        }
+                    }
+                }
+
+                // Final update
+                if (currentThreadId && setThreadId) {
+                    setThreadId(currentThreadId);
+                }
+                const finalMessage = {
+                    ...streamingMessage,
+                    content: accumulatedContent || "No content received.",
+                    animate: true,
+                };
+                setMessages([...messages, userMessage, finalMessage]);
+            } else {
+                // Non-streaming mode
+                const resp = await axios.post(`${apiUrl}/agent/prompt`, {
+                    prompt: content,
+                    thread_id: threadId,
+                    stream: false,
+                });
+
+                // Update thread_id if returned
+                if (resp.data?.thread_id && setThreadId) {
+                    setThreadId(resp.data.thread_id);
+                }
+
+                const aiReply = {
+                    role: 'assistant',
+                    content: resp.data?.response || "No content received.",
+                    id: uuid(),
+                    animate: true,
+                };
+
+                setMessages([...messages, userMessage, aiReply]);
+            }
         } catch (error) {
-            console.error("Error while sending prompt to the server:", error);
+            console.error("[MessageInput] Error while sending prompt to the server:", error);
+            console.error("[MessageInput] Error details:", {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                url: error.config?.url || error.request?.url
+            });
 
             const errorReply = {
                 role: 'assistant',
-                content: error.response?.data?.detail || "Error from server.",
+                content: error.response?.data?.detail || error.message || "Error from server.",
                 id: uuid(),
                 animate: true,
             };
