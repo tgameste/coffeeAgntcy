@@ -24,7 +24,8 @@ function Messages({ messages }) {
                     content={msg.content}
                     aiMessage={msg.role === 'assistant'}
                     animate={msg.animate}
-                    loading={msg.loading} // Remove loading from individual messages
+                    loading={msg.loading}
+                    agentType={msg.agentType}
                 />
             ))}
             {/* Invisible div to ensure scrolling to the bottom */}

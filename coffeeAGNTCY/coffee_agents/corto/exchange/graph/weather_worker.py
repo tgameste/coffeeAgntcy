@@ -47,28 +47,44 @@ class WeatherQueryTool(BaseTool):
     This tool is self-contained and doesn't require external instantiation.
     """
     name: str = "get_weather"
-    description: str = "Gets current weather information for a given location or region. Use this when users ask about weather conditions in a specific area."
+    description: str = (
+        "Gets current weather information for a given location or region. "
+        "Use this when users ask about weather conditions in a specific area. "
+        "The input can be a location name (e.g., 'Brazil', 'Colombia') or a full query (e.g., 'What is the weather in Brazil'). "
+        "The tool will automatically extract the location name from the query."
+    )
 
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
         self._client = None
         self._agent_card = weather_agent_card
-        self.args_schema = WeatherInput
+        # Don't enforce strict schema - allow flexible input
+        # self.args_schema = WeatherInput
 
     async def _connect(self):
         """Establish A2A connection to weather agent"""
         if self._client:
+            logger.info("[WeatherQueryTool] Client already connected, skipping connection")
             return
         
-        logger.info(f"[WeatherQueryTool] Connecting to weather agent: {self._agent_card.name}")
-        a2a_topic = A2AProtocol.create_agent_topic(self._agent_card)
-        self._client = await _factory.create_client(
-            "A2A",
-            agent_topic=a2a_topic,
-            agent_url=self._agent_card.url,
-            transport=_transport
-        )
-        logger.info("[WeatherQueryTool] Connected to weather agent successfully")
+        logger.info(f"[WeatherQueryTool._connect] Connecting to weather agent: {self._agent_card.name}")
+        logger.info(f"[WeatherQueryTool._connect] Agent URL: {self._agent_card.url}")
+        logger.info(f"[WeatherQueryTool._connect] Transport endpoint: {TRANSPORT_SERVER_ENDPOINT}")
+        
+        try:
+            a2a_topic = A2AProtocol.create_agent_topic(self._agent_card)
+            logger.info(f"[WeatherQueryTool._connect] Created A2A topic: {a2a_topic}")
+            logger.info(f"[WeatherQueryTool._connect] Creating A2A client...")
+            self._client = await _factory.create_client(
+                "A2A",
+                agent_topic=a2a_topic,
+                agent_url=self._agent_card.url,
+                transport=_transport
+            )
+            logger.info("[WeatherQueryTool._connect] Successfully connected to weather agent")
+        except Exception as e:
+            logger.error(f"[WeatherQueryTool._connect] Error connecting to weather agent: {str(e)}", exc_info=True)
+            raise
 
     def _run(self, input: dict) -> str:
         raise NotImplementedError("Use _arun for async execution.")
@@ -76,9 +92,39 @@ class WeatherQueryTool(BaseTool):
     async def _arun(self, input: dict, **kwargs: Any) -> str:
         """Execute weather query via A2A"""
         logger.info(f"[WeatherQueryTool._arun] Processing weather query: {input}")
+        logger.info(f"[WeatherQueryTool._arun] Input type: {type(input)}")
         
         # Extract location from input
-        location = input.get('location') if isinstance(input, dict) else str(input)
+        # The input might be a dict with 'location' key, or a string, or the full query
+        if isinstance(input, dict):
+            location = input.get('location', '')
+            # If no 'location' key, try to extract from the query string
+            if not location:
+                # Check if there's a 'query' or 'prompt' key
+                location = input.get('query', input.get('prompt', ''))
+                # If still no location, use the entire input as string
+                if not location:
+                    location = str(input)
+        else:
+            # Input is a string - extract location from it
+            location = str(input)
+        
+        # If location contains the full query, try to extract just the location name
+        # For queries like "What is the weather in Brazil", extract "Brazil"
+        location_lower = location.lower()
+        location_keywords = ['in ', 'for ', 'at ']
+        for keyword in location_keywords:
+            if keyword in location_lower:
+                # Extract text after the keyword
+                parts = location_lower.split(keyword, 1)
+                if len(parts) > 1:
+                    location = parts[1].strip()
+                    # Remove any trailing punctuation or question marks
+                    location = location.rstrip('?.,!').strip()
+                    break
+        
+        logger.info(f"[WeatherQueryTool._arun] Extracted location: {location}")
+        
         if not location:
             raise ValueError("Location must be provided")
         

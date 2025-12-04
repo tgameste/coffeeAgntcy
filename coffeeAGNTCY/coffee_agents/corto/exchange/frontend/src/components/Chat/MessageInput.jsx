@@ -54,15 +54,45 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
             loading: true,
         };
 
-        const updatedMessages = [...messages, userMessage, loadingMessage];
-        setLoading(true);
-
         // Detect which agent should be used
         const agentType = detectAgentType(content);
         if (setActiveAgent) {
             setActiveAgent(agentType);
         }
 
+        // Create supervisor message based on detected agent
+        let supervisorMessage = null;
+        if (agentType === 'weather') {
+            supervisorMessage = {
+                role: 'assistant',
+                content: 'Supervisor is contacting Weather Agent...',
+                id: uuid(),
+                animate: false,
+                loading: false,
+                agentType: 'supervisor',
+            };
+        } else if (agentType === 'flavor') {
+            supervisorMessage = {
+                role: 'assistant',
+                content: 'Supervisor is contacting Flavor Agent...',
+                id: uuid(),
+                animate: false,
+                loading: false,
+                agentType: 'supervisor',
+            };
+        } else {
+            supervisorMessage = {
+                role: 'assistant',
+                content: 'Supervisor is analyzing your request...',
+                id: uuid(),
+                animate: false,
+                loading: false,
+                agentType: 'supervisor',
+            };
+        }
+
+        const updatedMessages = [...messages, userMessage, supervisorMessage, loadingMessage];
+        setLoading(true);
         setMessages(updatedMessages);
         setContent('');
         setButtonClicked(true);
@@ -93,14 +123,15 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
                 let currentThreadId = threadId;
 
                 // Remove loading message and add streaming message
-                const streamingMessage = {
+                const agentResponseMessage = {
                     role: 'assistant',
                     content: '',
                     id: uuid(),
                     animate: false,
                     loading: false,
+                    agentType: agentType === 'weather' ? 'weather' : agentType === 'flavor' ? 'flavor' : 'supervisor',
                 };
-                setMessages([...messages, userMessage, streamingMessage]);
+                setMessages([...messages, userMessage, supervisorMessage, agentResponseMessage]);
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -128,11 +159,11 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
                                         currentThreadId = data.thread_id;
                                     }
                                     // Update streaming message
-                                    const updatedStreamingMessage = {
-                                        ...streamingMessage,
+                                    const updatedAgentResponseMessage = {
+                                        ...agentResponseMessage,
                                         content: accumulatedContent,
                                     };
-                                    setMessages([...messages, userMessage, updatedStreamingMessage]);
+                                    setMessages([...messages, userMessage, supervisorMessage, updatedAgentResponseMessage]);
                                 }
                             } catch (e) {
                                 console.error("Error parsing stream data:", e);
@@ -146,11 +177,11 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
                     setThreadId(currentThreadId);
                 }
                 const finalMessage = {
-                    ...streamingMessage,
+                    ...agentResponseMessage,
                     content: accumulatedContent || "No content received.",
                     animate: true,
                 };
-                setMessages([...messages, userMessage, finalMessage]);
+                setMessages([...messages, userMessage, supervisorMessage, finalMessage]);
             } else {
                 // Non-streaming mode
                 const resp = await axios.post(`${apiUrl}/agent/prompt`, {
@@ -164,14 +195,15 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
                     setThreadId(resp.data.thread_id);
                 }
 
-                const aiReply = {
+                const agentResponseMessage = {
                     role: 'assistant',
                     content: resp.data?.response || "No content received.",
                     id: uuid(),
                     animate: true,
+                    agentType: agentType === 'weather' ? 'weather' : agentType === 'flavor' ? 'flavor' : 'supervisor',
                 };
 
-                setMessages([...messages, userMessage, aiReply]);
+                setMessages([...messages, userMessage, supervisorMessage, agentResponseMessage]);
             }
         } catch (error) {
             console.error("[MessageInput] Error while sending prompt to the server:", error);
@@ -188,9 +220,10 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
                 content: error.response?.data?.detail || error.message || "Error from server.",
                 id: uuid(),
                 animate: true,
+                agentType: 'supervisor',
             };
 
-            setMessages([...messages, userMessage, errorReply]);
+            setMessages([...messages, userMessage, supervisorMessage, errorReply]);
         } finally {
             setLoading(false);
             setAiReplied(true);
@@ -219,12 +252,21 @@ function MessageInput({ messages, setMessages, setButtonClicked, setAiReplied, s
                 onKeyDown={handleKeyPressed}
                 disabled={loading}
             />
-            <div
+            <button
+                type="button"
                 className={`icon-container ${!content.trim() || loading ? 'disabled' : ''}`}
                 onClick={!content.trim() || loading ? null : handleSendMessage}
+                onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && content.trim() && !loading) {
+                        e.preventDefault();
+                        handleSendMessage();
+                    }
+                }}
+                disabled={!content.trim() || loading}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
             >
                 <IoSendSharp color="#00BCEB" />
-            </div>
+            </button>
         </div>
     );
 }

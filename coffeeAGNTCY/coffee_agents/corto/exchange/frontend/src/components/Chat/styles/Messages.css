@@ -21,11 +21,39 @@
     justify-content: center;
 }
 
-.message-text {
+.message-content-wrapper {
     width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+
+.agent-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    opacity: 0.8;
+}
+
+.message-text {
+    width: 100%;
     padding: 0;
-    margin: 8px;
+    margin: 8px 0;
     overflow-wrap: break-word;
+}
+
+/* Agent-specific styling */
+.message-container.agent-supervisor .message-text {
+    color: #187ADC;
+}
+
+.message-container.agent-weather .message-text {
+    color: #10B981;
+}
+
+.message-container.agent-flavor .message-text {
+    color: #F59E0B;
 }
 
 .message-input-container {
